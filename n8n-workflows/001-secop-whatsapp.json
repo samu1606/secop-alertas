@@ -1,0 +1,83 @@
+{
+  "name": "SECOP Alertas — Nuevas Licitaciones → WhatsApp",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "minutes", "minutesInterval": 30 }]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Cada 30 min",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://www.datos.gov.co/resource/jbjy-vk9h.json?$select=nombre_entidad,descripcion_del_proceso,valor_del_contrato,fecha_de_firma,departamento,ciudad,modalidad_de_contratacion,tipo_de_contrato,urlproceso,id_contrato,proceso_de_compra&$where=fecha_de_firma >= '{{$today}}'&$order=fecha_de_firma DESC&$limit=20",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": []
+        },
+        "options": {}
+      },
+      "id": "fetch-secop",
+      "name": "Consultar SECOP",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Palabras clave por tipo de cliente (configurable)\n// Cambiar KEYWORDS según el nicho del cliente\n\nconst KEYWORDS = [\n  'eléctric', 'electric', 'energía', 'energia', 'iluminación', 'iluminacion',\n  'subestación', 'subestacion', 'transformador', 'generador',\n  'redes', 'cableado', 'medidores', 'PANELES SOLARES', 'fotovoltaic',\n  'RETIE', 'NTC 2050', 'montaje', 'mantenimiento eléctrico',\n  'obras civiles', 'construcción', 'construccion', 'adecuación',\n  'infraestructura', 'vías', 'vias', 'paviment', 'alcantarillado',\n  'consultoría', 'consultoria', 'interventoría', 'interventoria',\n  'diseño', 'diseno', 'ingeniería', 'ingenieria'\n];\n\nconst items = $input.all();\nconst matches = [];\n\nfor (const item of items) {\n  const desc = (item.json.descripcion_del_proceso || '').toLowerCase();\n  const entidad = (item.json.nombre_entidad || '').toLowerCase();\n  const tipo = (item.json.tipo_de_contrato || '').toLowerCase();\n  const searchText = desc + ' ' + entidad + ' ' + tipo;\n  \n  const matched = KEYWORDS.filter(kw => searchText.includes(kw.toLowerCase()));\n  \n  if (matched.length > 0) {\n    const valor = parseInt(item.json.valor_del_contrato) || 0;\n    const valorFormatted = new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(valor);\n    \n    matches.push({\n      json: {\n        id_contrato: item.json.id_contrato,\n        proceso: item.json.proceso_de_compra,\n        entidad: item.json.nombre_entidad,\n        descripcion: item.json.descripcion_del_proceso,\n        valor: valorFormatted,\n        fecha: item.json.fecha_de_firma,\n        departamento: item.json.departamento,\n        ciudad: item.json.ciudad,\n        modalidad: item.json.modalidad_de_contratacion,\n        tipo: item.json.tipo_de_contrato,\n        url: item.json.urlproceso?.url || `https://community.secop.gov.co/`,\n        keywords: matched.join(', '),\n        message: `📋 *Nueva Licitación SECOP*\\n\\n🏛️ *${item.json.nombre_entidad}*\\n📍 ${item.json.departamento || ''}, ${item.json.ciudad || ''}\\n📝 ${item.json.descripcion_del_proceso?.substring(0, 120)}...\\n💰 ${valorFormatted}\\n📅 ${item.json.fecha_de_firma?.split('T')[0]}\\n🏷️ ${item.json.modalidad_de_contratacion}\\n\\n🔗 ${item.json.urlproceso?.url || 'https://community.secop.gov.co/'}\\n\\n⚡ SECOP Alertas`\n      }\n    });\n  }\n}\n\nreturn matches;"
+      },
+      "id": "filter-keywords",
+      "name": "Filtrar por Keywords",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [750, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://148.230.90.171:8096/message/sendText/flujodigital",
+        "method": "POST",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "{{EVO_API_KEY}}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": []
+        },
+        "options": {}
+      },
+      "id": "send-whatsapp",
+      "name": "Enviar WhatsApp",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1000, 300]
+    }
+  ],
+  "connections": {
+    "Cada 30 min": {
+      "main": [[ { "node": "Consultar SECOP", "type": "main", "index": 0 } ]]
+    },
+    "Consultar SECOP": {
+      "main": [[ { "node": "Filtrar por Keywords", "type": "main", "index": 0 } ]]
+    },
+    "Filtrar por Keywords": {
+      "main": [[ { "node": "Enviar WhatsApp", "type": "main", "index": 0 } ]]
+    }
+  },
+  "settings": {
+    "saveExecutionProgress": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  }
+}
