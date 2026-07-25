@@ -1,4 +1,5 @@
-FROM nginx:alpine
-COPY nginx.conf /etc/nginx/conf.d/default.conf
-COPY landing/index.html /usr/share/nginx/html/index.html
+FROM python:3-alpine
+COPY landing/index.html /app/index.html
+WORKDIR /app
 EXPOSE 80
+CMD ["python", "-m", "http.server", "80"]
