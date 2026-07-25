@@ -41,7 +41,7 @@
     },
     {
       "parameters": {
-        "url": "http://148.230.90.171:8096/message/sendText/flujodigital",
+        "url": "http://148.230.90.171:8096/message/sendText/wasapea-7c7a2c6c",
         "method": "POST",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
