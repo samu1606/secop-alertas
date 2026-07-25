@@ -3,7 +3,5 @@ services:
     build: .
     container_name: secop-alertas
     restart: always
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.secop.rule=Host(`secop-alertas.148-230-90-171.nip.io`)"
-      - "traefik.http.services.secop.loadbalancer.server.port=80"
+    expose:
+      - "80"
