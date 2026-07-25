@@ -1,7 +1,9 @@
 services:
   secop-alertas:
-    build: .
+    image: nginx:alpine
     container_name: secop-alertas
     restart: always
+    volumes:
+      - ./landing/index.html:/usr/share/nginx/html/index.html:ro
     expose:
       - "80"
