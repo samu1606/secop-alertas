@@ -1,0 +1,41 @@
+{
+  "name": "SECOP Alertas → WhatsApp (v4 Supabase)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 6
+            }
+          ]
+        }
+      },
+      "id": "schedule",
+      "name": "Every 6 hours",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const http = this.helpers.httpRequest;\n\nconst SUPABASE_URL = 'https://zavabpchdvssvdnwtuyu.supabase.co';\nconst SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InphdmFicGNoZHZzc3Zkbnd0dXl1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQzNDA4NDgsImV4cCI6MjA5OTkxNjg0OH0.bGIex-jior3Q48OAwXRmuwJbt6SZ_MQMiyiieY4WDm4';\nconst supabaseHeaders = { 'apikey': SUPABASE_KEY, 'Authorization': 'Bearer ' + SUPABASE_KEY };\n\nasync function getSubscribers() {\n  const url = SUPABASE_URL + '/rest/v1/alert_subscribers?product=eq.secop&active=eq.true&select=phone,plan,config';\n  try {\n    const data = await http({ method: 'GET', url, headers: supabaseHeaders });\n    return Array.isArray(data) ? data : [];\n  } catch (e) {\n    return [];\n  }\n}\n\nasync function sendMsg(phone, text) {\n  return http({\n    method: 'POST',\n    url: 'http://148.230.90.171:8096/message/sendText/wasapea-7c7a2c6c',\n    headers: { 'apikey': 'wasapea-evo-key-2026', 'Content-Type': 'application/json' },\n    body: { number: phone, text: text }\n  });\n}\n\n// 1. Fetch SECOP contracts (last 48h)\nconst base = 'https://www.datos.gov.co/resource/jbjy-vk9h.json';\nconst now = new Date();\nconst since = new Date(now.getTime() - 48 * 60 * 60 * 1000).toISOString().split('T')[0];\nconst params = '$select=nombre_entidad,descripcion_del_proceso,valor_del_contrato,fecha_de_firma,departamento,ciudad,modalidad_de_contratacion,tipo_de_contrato,urlproceso,id_contrato&$where=fecha_de_firma%20%3E=%20%27' + since + '%27&$order=fecha_de_firma%20DESC&$limit=20';\nconst data = await http({ method: 'GET', url: base + '?' + params });\n\nif (!Array.isArray(data) || data.length === 0) {\n  return { sent: 0, message: 'No contracts in last 48h' };\n}\n\n// 2. Fetch subscribers\nconst subscribers = await getSubscribers();\nif (subscribers.length === 0) {\n  return { sent: 0, message: 'No active subscribers' };\n}\n\n// 3. For each subscriber, filter contracts by keywords and send\nconst results = [];\nconst DEFAULT_KEYWORDS = ['eléctric', 'electric', 'energ', 'solar', 'panel', 'transformador', 'red', 'subestación', 'iluminación', 'led', 'cable', 'generador'];\n\nfor (const sub of subscribers) {\n  const keywords = (sub.config && sub.config.keywords && sub.config.keywords.length > 0)\n    ? sub.config.keywords\n    : DEFAULT_KEYWORDS;\n\n  const matches = data.filter(item => {\n    const text = (item.descripcion_del_proceso || '') + ' ' + (item.nombre_entidad || '');\n    return keywords.some(kw => text.toLowerCase().includes(kw.toLowerCase()));\n  });\n\n  if (matches.length === 0) continue;\n\n  for (const item of matches) {\n    const desc = (item.descripcion_del_proceso || 'Sin descripción').substring(0, 120);\n    const valorFmt = item.valor_del_contrato\n      ? '$' + Number(item.valor_del_contrato).toLocaleString('es-CO')\n      : 'No especificado';\n    const fecha = item.fecha_de_firma\n      ? new Date(item.fecha_de_firma).toLocaleDateString('es-CO')\n      : 'Sin fecha';\n    const urlLink = (item.urlproceso && item.urlproceso.url)\n      ? item.urlproceso.url\n      : 'https://community.secop.gov.co/';\n\n    const text = '📋 *Licitación SECOP*\\n\\n' +\n      '🏛️ *' + item.nombre_entidad + '*\\n' +\n      '📍 ' + (item.departamento || '') + ', ' + (item.ciudad || '') + '\\n' +\n      '📝 ' + desc + '...\\n' +\n      '💰 ' + valorFmt + '\\n' +\n      '📅 ' + fecha + '\\n' +\n      '🏷️ ' + (item.modalidad_de_contratacion || '') + '\\n\\n' +\n      '🔗 ' + urlLink + '\\n\\n' +\n      '⚡ *SECOP Alertas*';\n\n    try {\n      await sendMsg(sub.phone, text);\n      results.push({ phone: sub.phone, contract: item.id_contrato, status: 'sent' });\n    } catch (e) {\n      results.push({ phone: sub.phone, status: 'error' });\n    }\n  }\n}\n\nreturn { sent: results.filter(r => r.status === 'sent').length, contracts: data.length, subscribers: subscribers.length };\n"
+      },
+      "id": "fetch-send",
+      "name": "Fetch SECOP & Send to Subscribers",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [500, 300]
+    }
+  ],
+  "connections": {
+    "Every 6 hours": {
+      "main": [[{"node": "Fetch SECOP & Send to Subscribers", "type": "main", "index": 0}]]
+    }
+  },
+  "settings": {
+    "saveExecutionProgress": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  }
+}
